@@ -130,6 +130,46 @@ def test_speech_to_text(audio_file_path=None):
         print("To test this endpoint, run:")
         print("  test_speech_to_text('path/to/your/audio.wav')")
         return False
+
+
+def test_text_to_speech(text: str = "This is a test of ElevenLabs text to speech."):
+    """Test text-to-speech endpoint (Deepgram)"""
+    print("\n" + "="*50)
+    print("Testing Text-to-Speech Endpoint")
+    print("="*50)
+
+    try:
+        # Check if TTS is available on server
+        try:
+            info = requests.get(f"{BASE_URL}/api/info").json()
+            if not info.get("features", {}).get("tts", {}).get("enabled", False):
+                print("⚠️  Skipped: TTS not configured on server")
+                return False
+        except Exception:
+            pass
+        response = requests.post(
+            f"{BASE_URL}/api/text-to-speech",
+            headers={"Content-Type": "application/json"},
+            json={"text": text}
+        )
+        print(f"Status Code: {response.status_code}")
+        if response.status_code != 200:
+            try:
+                print(f"Response: {response.json()}")
+            except Exception:
+                print(f"Response (raw): {response.text}")
+            return False
+
+        content_type = response.headers.get("Content-Type", "")
+        print(f"Content-Type: {content_type}")
+        audio_path = "D:/chat/tts_test.mp3"
+        with open(audio_path, "wb") as f:
+            f.write(response.content)
+        print(f"Saved audio to {audio_path}")
+        return True
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        return False
     
     try:
         with open(audio_file_path, 'rb') as audio_file:
@@ -157,7 +197,8 @@ def run_all_tests():
         "Basic Chat": test_chat(),
         "Weather Query Chat": test_chat_with_weather(),
         "Conversation History": test_chat_conversation(),
-        "Speech-to-Text": test_speech_to_text("D:\\chat\\japan.wav")
+        "Speech-to-Text": test_speech_to_text("D:\\chat\\japan.wav"),
+        "Text-to-Speech": test_text_to_speech()
     }
     
     # Summary
@@ -170,7 +211,7 @@ def run_all_tests():
         print(f"{test_name}: {status}")
     
     passed_count = sum(1 for v in results.values() if v)
-    total_count = len([k for k, v in results.items() if k != "Speech-to-Text"])
+    total_count = len([k for k, v in results.items() if k not in ("Speech-to-Text", "Text-to-Speech")])
     
     print(f"\nTotal: {passed_count}/{total_count} tests passed")
     print("\n" + "="*50)

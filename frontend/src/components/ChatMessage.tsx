@@ -1,5 +1,8 @@
-import { Bot, User } from "lucide-react";
+import { Bot, User, Volume2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useState } from "react";
+import { textToSpeech } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
 
 interface ChatMessageProps {
   role: "user" | "assistant";
@@ -8,6 +11,35 @@ interface ChatMessageProps {
 
 const ChatMessage = ({ role, content }: ChatMessageProps) => {
   const isBot = role === "assistant";
+  const [speaking, setSpeaking] = useState(false);
+  const { toast } = useToast();
+
+  const handleSpeak = async () => {
+    if (!content || speaking) return;
+    try {
+      setSpeaking(true);
+      const blob = await textToSpeech(content);
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        setSpeaking(false);
+      };
+      audio.onerror = () => {
+        URL.revokeObjectURL(url);
+        setSpeaking(false);
+      };
+      await audio.play();
+    } catch (e: any) {
+      console.error("TTS error", e);
+      toast({
+        title: "Text-to-Speech failed",
+        description: e?.message || "Unable to synthesize speech.",
+        variant: "destructive",
+      });
+      setSpeaking(false);
+    }
+  };
 
   return (
     <div
@@ -30,7 +62,28 @@ const ChatMessage = ({ role, content }: ChatMessageProps) => {
             : "bg-gradient-primary text-white rounded-tr-sm"
         )}
       >
-        <p className="text-sm leading-relaxed whitespace-pre-wrap">{content}</p>
+        <div className={cn("flex items-start gap-2")}
+        >
+          <p className="text-sm leading-relaxed whitespace-pre-wrap flex-1">{content}</p>
+          {isBot && (
+            <button
+              onClick={handleSpeak}
+              title={speaking ? "Playing..." : "Play audio"}
+              className={cn(
+                "ml-1 rounded-full p-1.5 transition-colors",
+                speaking ? "opacity-60 cursor-not-allowed" : "hover:bg-muted"
+              )}
+              disabled={speaking}
+              aria-label="Speak message"
+            >
+              {speaking ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Volume2 className="w-4 h-4" />
+              )}
+            </button>
+          )}
+        </div>
       </div>
 
       {!isBot && (

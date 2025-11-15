@@ -1,6 +1,7 @@
 import io
 import httpx
 from config import get_settings
+from typing import Tuple, Optional
 
 
 class SpeechService:
@@ -9,8 +10,12 @@ class SpeechService:
     def __init__(self):
         settings = get_settings()
         self.api_key = settings.ELEVENLABS_API_KEY
-        self.model = "scribe_v1"  # ElevenLabs Scribe model
+        self.model = "scribe_v1"  # ElevenLabs Scribe model (STT)
         self.base_url = "https://api.elevenlabs.io/v1"
+        # ElevenLabs TTS
+        self.tts_model: str = getattr(settings, "ELEVENLABS_TTS_MODEL", "eleven_multilingual_v2")
+        self.voice_id: str = getattr(settings, "ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
+        self.tts_output_mime: str = getattr(settings, "ELEVENLABS_TTS_OUTPUT_MIME", "audio/mpeg")
     
     async def transcribe_audio(self, audio_data: bytes, mime_type: str | None = None, filename: str | None = None) -> str:
         """
@@ -92,3 +97,63 @@ class SpeechService:
             "id", "fil", "uk", "cs", "el", "fi", "hr", "ms",
             "ro", "sk", "bg", "bn", "ta", "te"
         ]
+
+    async def synthesize_speech(
+        self,
+        text: str,
+        *,
+        model: Optional[str] = None,
+        voice_id: Optional[str] = None,
+    ) -> Tuple[bytes, str]:
+        """
+        Convert text to speech using ElevenLabs TTS REST API.
+
+        Args:
+            text: Text to synthesize
+            model: ElevenLabs TTS model (e.g., 'eleven_multilingual_v2')
+            voice_id: ElevenLabs voice ID to use
+
+        Returns:
+            Tuple of (audio bytes, content_type)
+        """
+        if not text or not text.strip():
+            raise ValueError("Text is required for TTS")
+
+        url = f"{self.base_url}/text-to-speech/{(voice_id or self.voice_id)}"
+
+        headers = {
+            "xi-api-key": self.api_key,
+            "accept": self.tts_output_mime,
+            "Content-Type": "application/json",
+        }
+
+        payload = {
+            "text": text,
+            "model_id": (model or self.tts_model),
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                response = await client.post(url, headers=headers, json=payload)
+
+                if response.status_code != 200:
+                    try:
+                        err = response.json()
+                    except Exception:
+                        err = {"raw": response.text}
+                    raise Exception(f"ElevenLabs TTS error {response.status_code}: {err}")
+
+                audio_bytes = response.content
+                content_type = response.headers.get("Content-Type", self.tts_output_mime)
+                return audio_bytes, content_type
+
+        except httpx.HTTPError as e:
+            detail = ""
+            if hasattr(e, "response") and e.response is not None:
+                try:
+                    detail = f" | Body: {e.response.text}"
+                except Exception:
+                    pass
+            raise Exception(f"TTS request failed: HTTP error - {str(e)}{detail}")
+        except Exception as e:
+            raise Exception(f"TTS request failed: {str(e)}")

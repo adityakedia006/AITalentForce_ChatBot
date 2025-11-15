@@ -1,6 +1,8 @@
-from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Form
+from fastapi import FastAPI, UploadFile, File, HTTPException, Query, Form, Request
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+import io
 import uvicorn
 import json
 from typing import Optional
@@ -21,6 +23,8 @@ async def lifespan(app: FastAPI):
     print("🚀 Starting Voice-Enabled Chatbot Backend...")
     print(f"📊 LLM Model: {settings.LLM_MODEL}")
     print(f"🎤 Speech Model: {settings.ELEVENLABS_MODEL}")
+    print(f"🔊 TTS Model (ElevenLabs): {settings.ELEVENLABS_TTS_MODEL}")
+    print(f"🔊 TTS Voice (ElevenLabs): {settings.ELEVENLABS_VOICE_ID}")
     yield
     # Shutdown
     print("👋 Shutting down...")
@@ -151,6 +155,49 @@ async def chat(request: ChatRequest):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Chat completion failed: {str(e)}")
+
+
+@app.post("/api/text-to-speech")
+async def text_to_speech(request: Request, text: str = Form(None)):
+    """
+    Convert text to speech using Deepgram TTS.
+
+    Accepts either JSON body {"text": "...", "model": "...", "encoding": "mp3", "container": "mp3"}
+    or form field 'text'.
+    Returns audio bytes with appropriate content-type.
+    """
+    try:
+        payload = None
+        # Try JSON body first
+        try:
+            if request.headers.get("content-type", "").startswith("application/json"):
+                payload = await request.json()
+        except Exception:
+            payload = None
+        if not payload:
+            # Use 'text' form field as fallback
+            if not text:
+                raise HTTPException(status_code=400, detail="Provide text in JSON body or form field 'text'")
+            payload = {"text": text}
+
+        t = payload.get("text") if isinstance(payload, dict) else None
+        if not t or not str(t).strip():
+            raise HTTPException(status_code=400, detail="Text is required for TTS")
+
+        model_override = payload.get("model") if isinstance(payload, dict) else None
+        voice_id = payload.get("voice_id") if isinstance(payload, dict) else None
+
+        audio_bytes, content_type = await speech_service.synthesize_speech(
+            t,
+            model=model_override,
+            voice_id=voice_id,
+        )
+
+        return StreamingResponse(io.BytesIO(audio_bytes), media_type=content_type)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Text-to-speech failed: {str(e)}")
 
 
 @app.get("/api/weather", response_model=WeatherResponse)
@@ -304,6 +351,12 @@ async def get_info():
             "weather": {
                 "provider": "Open-Meteo",
                 "features": ["current weather", "geocoding"]
+            },
+            "tts": {
+                "provider": "ElevenLabs",
+                "model": getattr(settings, "ELEVENLABS_TTS_MODEL", None),
+                "voice_id": getattr(settings, "ELEVENLABS_VOICE_ID", None),
+                "enabled": True  # enabled as long as ELEVENLABS_API_KEY is set (required)
             }
         },
         "endpoints": {
@@ -312,6 +365,7 @@ async def get_info():
             "/api/weather": "Get weather information",
             "/api/voice-chat": "Complete voice chat flow",
             "/api/assist": "Unified text or audio input pipeline",
+            "/api/text-to-speech": "Convert text to audio (Deepgram)",
             "/api/translate": "Translate arbitrary text between English and Japanese"
         }
     }

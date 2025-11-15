@@ -22,8 +22,14 @@ class Settings(BaseSettings):
     )
     # Alternative models: llama-3.1-70b-versatile, llama-3.1-8b-instant, mixtral-8x7b-32768
     
-    # ElevenLabs Configuration
+    # ElevenLabs Configuration (Speech-to-Text)
     ELEVENLABS_MODEL: str = "scribe_v1"
+
+    # ElevenLabs TTS Configuration
+    ELEVENLABS_TTS_MODEL: str = "eleven_multilingual_v2"
+    # Default public sample voice (Rachel). Replace in .env for production.
+    ELEVENLABS_VOICE_ID: str = "21m00Tcm4TlvDq8ikWAM"
+    ELEVENLABS_TTS_OUTPUT_MIME: str = "audio/mpeg"
     
     class Config:
         env_file = ".env"
