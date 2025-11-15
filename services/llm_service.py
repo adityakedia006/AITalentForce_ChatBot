@@ -1,5 +1,6 @@
 from groq import Groq
-from typing import List, Dict
+from typing import List, Dict, Optional
+import json
 from config import get_settings
 from models import ChatMessage
 
@@ -7,12 +8,33 @@ from models import ChatMessage
 class LLMService:
     """Service for LLM chat completions using Groq API."""
     
-    def __init__(self):
+    def __init__(self, weather_service=None):
         self.settings = get_settings()
         self.client = Groq(api_key=self.settings.GROQ_API_KEY)
         self.model = self.settings.LLM_MODEL
         self.system_prompt = self.settings.LLM_SYSTEM_PROMPT
+        self.weather_service = weather_service
     
+    def _get_weather_tool_definition(self) -> Dict:
+        """Get the weather tool definition for Groq API."""
+        return {
+            "type": "function",
+            "function": {
+                "name": "get_weather",
+                "description": "Get current weather information for any location. Use this when users ask about weather, temperature, or climate conditions.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "location": {
+                            "type": "string",
+                            "description": "The city or location name (e.g., 'Tokyo', 'New York', 'London', 'Delhi')"
+                        }
+                    },
+                    "required": ["location"]
+                }
+            }
+        }
+
     async def chat_completion(
         self,
         user_message: str,
@@ -21,12 +43,13 @@ class LLMService:
         system_prompt_override: str = None
     ) -> Dict[str, any]:
         """
-        Generate a chat completion using Groq API.
+        Generate a chat completion using Groq API with tool use support.
         
         Args:
             user_message: The user's message
             conversation_history: Previous conversation messages
-            weather_context: Optional weather information to include in context
+            weather_context: Optional weather information (deprecated, tools are used instead)
+            system_prompt_override: Optional system prompt override
             
         Returns:
             Dictionary with response and updated conversation history
@@ -58,6 +81,7 @@ class LLMService:
                 # Avoid duplicating policy if user provided override already contains it
                 if "use the same language" not in active_system_prompt.lower():
                     active_system_prompt += f"\n\n{policy_hint}"
+            
             messages = [{"role": "system", "content": active_system_prompt}]
             
             # Add conversation history
@@ -67,29 +91,73 @@ class LLMService:
                     "content": msg.content
                 })
             
-            # Add weather context if provided
-            current_user_message = user_message
-            if weather_context:
-                current_user_message = f"{user_message}\n\n[Weather Information: {weather_context}]"
-            
             # Add current user message
             messages.append({
                 "role": "user",
-                "content": current_user_message
+                "content": user_message
             })
             
-            # Call Groq API
+            # Define tools (only if weather_service is available)
+            tools = None
+            if self.weather_service:
+                tools = [self._get_weather_tool_definition()]
+            
+            # Call Groq API with tools
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
                 temperature=0.7,
                 max_tokens=1024,
                 top_p=1,
-                stream=False
+                stream=False,
+                tools=tools,
+                tool_choice="auto" if tools else None
             )
             
-            # Extract assistant's response
-            assistant_message = response.choices[0].message.content
+            response_message = response.choices[0].message
+            tool_calls = response_message.tool_calls
+            
+            # Handle tool calls if any
+            if tool_calls and self.weather_service:
+                # Add the assistant's response with tool calls to messages
+                messages.append(response_message)
+                
+                # Process each tool call
+                for tool_call in tool_calls:
+                    function_name = tool_call.function.name
+                    function_args = json.loads(tool_call.function.arguments)
+                    
+                    if function_name == "get_weather":
+                        try:
+                            # Call the weather service
+                            location = function_args.get("location")
+                            weather_data = await self.weather_service.get_weather(location)
+                            tool_response = self.weather_service.format_weather_for_llm(weather_data)
+                        except Exception as e:
+                            tool_response = f"Error fetching weather: {str(e)}"
+                        
+                        # Add tool response to messages
+                        messages.append({
+                            "tool_call_id": tool_call.id,
+                            "role": "tool",
+                            "name": function_name,
+                            "content": tool_response
+                        })
+                
+                # Make second API call with tool results
+                second_response = self.client.chat.completions.create(
+                    model=self.model,
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=1024,
+                    top_p=1,
+                    stream=False
+                )
+                
+                assistant_message = second_response.choices[0].message.content
+            else:
+                # No tool calls, use direct response
+                assistant_message = response_message.content
             
             # Update conversation history
             updated_history = conversation_history + [

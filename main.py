@@ -51,8 +51,8 @@ app.add_middleware(
 
 # Initialize services
 speech_service = SpeechService()
-llm_service = LLMService()
 weather_service = WeatherService()
+llm_service = LLMService(weather_service=weather_service)
 
 
 # --- Weather intent and location extraction (EN + JA) ---
@@ -204,14 +204,10 @@ async def chat(request: ChatRequest):
         Assistant's response and updated conversation history
     """
     try:
-        # Try to build weather context from message (EN/JA)
-        weather_context = await build_weather_context(request.message)
-
-        # Generate chat completion
+        # Generate chat completion (LLM will use tools to fetch weather if needed)
         result = await llm_service.chat_completion(
             user_message=request.message,
             conversation_history=request.conversation_history,
-            weather_context=weather_context,
             system_prompt_override=request.system_prompt
         )
         
@@ -333,12 +329,10 @@ async def voice_chat(
         transcribed_text = await _normalize_to_allowed_langs(transcribed_text)
         
         # Step 2: Get chat response
-        # Try to add weather context from Japanese/English speech
-        weather_context = await build_weather_context(transcribed_text)
+        # LLM will use tools to fetch weather if needed
         result = await llm_service.chat_completion(
             user_message=transcribed_text,
             conversation_history=history,
-            weather_context=weather_context,
             system_prompt_override=system_prompt
         )
         
@@ -394,12 +388,10 @@ async def assist(
         if not combined_message:
             raise HTTPException(status_code=400, detail="Provide either 'message' or 'audio_file'")
 
-        # Weather context for text or transcribed audio (EN/JA)
-        weather_context = await build_weather_context(combined_message)
+        # LLM will use tools to fetch weather if needed
         result = await llm_service.chat_completion(
             user_message=combined_message,
             conversation_history=history,
-            weather_context=weather_context,
             system_prompt_override=system_prompt
         )
 
