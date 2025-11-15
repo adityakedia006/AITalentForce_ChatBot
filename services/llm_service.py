@@ -8,10 +8,10 @@ class LLMService:
     """Service for LLM chat completions using Groq API."""
     
     def __init__(self):
-        settings = get_settings()
-        self.client = Groq(api_key=settings.GROQ_API_KEY)
-        self.model = settings.LLM_MODEL
-        self.system_prompt = settings.LLM_SYSTEM_PROMPT
+        self.settings = get_settings()
+        self.client = Groq(api_key=self.settings.GROQ_API_KEY)
+        self.model = self.settings.LLM_MODEL
+        self.system_prompt = self.settings.LLM_SYSTEM_PROMPT
     
     async def chat_completion(
         self,
@@ -41,8 +41,23 @@ class LLMService:
             
             # Build messages array
             active_system_prompt = (system_prompt_override or self.system_prompt).strip()
-            if "always respond in english" not in active_system_prompt.lower():
-                active_system_prompt += "\n\nIMPORTANT: Always respond in English."
+
+            # Language behavior: restrict outputs to English/Japanese only
+            if getattr(self.settings, "LLM_FORCE_ENGLISH", False):
+                if "always respond in english" not in active_system_prompt.lower():
+                    active_system_prompt += (
+                        "\n\nIMPORTANT: Always respond in English with proper grammar and complete sentences."
+                    )
+            else:
+                policy_hint = (
+                    "Use the same language as the user. "
+                    "If they write in Japanese, respond in Japanese. "
+                    "If they write in English, respond in English. "
+                    "Use proper grammar, complete sentences, and natural formatting."
+                )
+                # Avoid duplicating policy if user provided override already contains it
+                if "use the same language" not in active_system_prompt.lower():
+                    active_system_prompt += f"\n\n{policy_hint}"
             messages = [{"role": "system", "content": active_system_prompt}]
             
             # Add conversation history

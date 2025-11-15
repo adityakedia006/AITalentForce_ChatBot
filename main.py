@@ -6,6 +6,7 @@ import io
 import uvicorn
 import json
 from typing import Optional
+import re
 
 from config import get_settings
 from models import (
@@ -52,6 +53,93 @@ app.add_middleware(
 speech_service = SpeechService()
 llm_service = LLMService()
 weather_service = WeatherService()
+
+
+# --- Weather intent and location extraction (EN + JA) ---
+JP_LOC_CHARS = r"[A-Za-z\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FFFー]+"
+WEATHER_KEYWORDS_EN = [
+    "weather", "temperature", "temp", "forecast", "climate", "rain", "sunny", "cloudy",
+    "degree", "degrees", "wind", "windy", "snow", "snowy", "humidity", "hot", "cold"
+]
+WEATHER_KEYWORDS_JA = [
+    "天気", "気温", "温度", "予報", "雨", "晴れ", "曇り", "風", "風速", "湿度", "暑い", "寒い", "雪"
+]
+
+def _maybe_extract_location(msg: str) -> Optional[str]:
+    text = msg.strip()
+    lowered = text.lower()
+    # Quick intent check to avoid unnecessary regex/geocoding calls
+    if not (any(k in lowered for k in WEATHER_KEYWORDS_EN) or any(k in text for k in WEATHER_KEYWORDS_JA)):
+        return None
+
+    # 1) English pattern: in/at/for <one|two words>
+    m_en = re.search(rf"\b(?:in|at|for)\s+({JP_LOC_CHARS}(?:\s+{JP_LOC_CHARS})?)", text, flags=re.IGNORECASE)
+    if m_en:
+        return m_en.group(1).strip().rstrip("?.!,;")
+
+    # 2) Japanese pattern: <LOC>(の|で|は)?(天気|気温|予報|雨|晴れ|曇り)
+    m_ja1 = re.search(rf"({JP_LOC_CHARS})\s*(?:の|で|は)?\s*(?:天気|気温|予報|雨|晴れ|曇り)", text)
+    if m_ja1:
+        return m_ja1.group(1).strip().rstrip("？?。．.,!;」』])")
+
+    # 3) Japanese pattern: (天気|...) は/って? <LOC>
+    m_ja2 = re.search(rf"(?:天気|気温|予報|雨|晴れ|曇り)\s*(?:は|って)?\s*({JP_LOC_CHARS})", text)
+    if m_ja2:
+        return m_ja2.group(1).strip().rstrip("？?。．.,!;」』])")
+
+    return None
+
+async def build_weather_context(message: str) -> Optional[str]:
+    try:
+        loc = _maybe_extract_location(message)
+        if not loc:
+            return None
+        weather_data = await weather_service.get_weather(loc)
+        return weather_service.format_weather_for_llm(weather_data)
+    except Exception:
+        return None
+
+
+# --- Simple language detection and normalization helpers ---
+def _detect_lang_simple(text: str) -> str:
+    """Very lightweight language detection for EN/JA vs other.
+    - Returns 'ja' if any Japanese scripts are present (Hiragana/Katakana/Kanji)
+    - Returns 'en' if ASCII letters are present and no Japanese scripts
+    - Returns 'other' otherwise (e.g., Devanagari, Cyrillic, etc.)
+    """
+    if not text:
+        return "en"
+
+    has_ja = any(
+        ('\u3040' <= ch <= '\u309F')  # Hiragana
+        or ('\u30A0' <= ch <= '\u30FF')  # Katakana
+        or ('\u4E00' <= ch <= '\u9FFF')  # CJK Unified Ideographs (Kanji)
+        for ch in text
+    )
+    if has_ja:
+        return "ja"
+
+    has_en = any(('a' <= ch.lower() <= 'z') for ch in text)
+    if has_en:
+        return "en"
+
+    return "other"
+
+
+async def _normalize_to_allowed_langs(text: str) -> str:
+    """Ensure text is in EN or JA only. If it's another language, translate to EN.
+    Uses LLMService.translate_text for normalization when needed.
+    """
+    lang = _detect_lang_simple(text)
+    if lang in ("en", "ja"):
+        return text
+    try:
+        # Default normalization target: English
+        translated = await llm_service.translate_text(text, "en")
+        return translated or text
+    except Exception:
+        # On failure, return original text to avoid breaking the flow
+        return text
 
 
 @app.get("/", response_model=HealthResponse)
@@ -116,33 +204,9 @@ async def chat(request: ChatRequest):
         Assistant's response and updated conversation history
     """
     try:
-        # Check if message contains weather-related query
-        weather_context = None
-        weather_keywords = ["weather", "temperature", "forecast", "climate", "rain", "sunny", "cloudy"]
-        
-        if any(keyword in request.message.lower() for keyword in weather_keywords):
-            # Try to extract location from message
-            # Simple approach - you can enhance this with NER
-            try:
-                # For demo, attempt to get weather if location seems present
-                # This is a simple heuristic - in production, use NLP/NER
-                words = request.message.split()
-                
-                # Look for "in [location]" or "at [location]" patterns
-                for i, word in enumerate(words):
-                    if word.lower() in ["in", "at", "for"] and i + 1 < len(words):
-                        potential_location = " ".join(words[i+1:i+3])  # Get next 1-2 words
-                        potential_location = potential_location.rstrip("?.,!;")
-                        
-                        try:
-                            weather_data = await weather_service.get_weather(potential_location)
-                            weather_context = weather_service.format_weather_for_llm(weather_data)
-                            break
-                        except:
-                            continue
-            except:
-                pass
-        
+        # Try to build weather context from message (EN/JA)
+        weather_context = await build_weather_context(request.message)
+
         # Generate chat completion
         result = await llm_service.chat_completion(
             user_message=request.message,
@@ -193,7 +257,15 @@ async def text_to_speech(request: Request, text: str = Form(None)):
             voice_id=voice_id,
         )
 
-        return StreamingResponse(io.BytesIO(audio_bytes), media_type=content_type)
+        headers = {
+            "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+            "Pragma": "no-cache",
+            "Expires": "0",
+            # Hint filename; still served inline
+            "Content-Disposition": "inline; filename=tts-output",
+        }
+
+        return StreamingResponse(io.BytesIO(audio_bytes), media_type=content_type, headers=headers)
     except HTTPException:
         raise
     except Exception as e:
@@ -257,11 +329,16 @@ async def voice_chat(
             mime_type=getattr(audio_file, "content_type", None),
             filename=getattr(audio_file, "filename", None)
         )
+        # Normalize transcription to allowed languages (EN/JA)
+        transcribed_text = await _normalize_to_allowed_langs(transcribed_text)
         
         # Step 2: Get chat response
+        # Try to add weather context from Japanese/English speech
+        weather_context = await build_weather_context(transcribed_text)
         result = await llm_service.chat_completion(
             user_message=transcribed_text,
             conversation_history=history,
+            weather_context=weather_context,
             system_prompt_override=system_prompt
         )
         
@@ -307,6 +384,8 @@ async def assist(
                 mime_type=getattr(audio_file, "content_type", None),
                 filename=getattr(audio_file, "filename", None)
             )
+            # Normalize transcription to allowed languages (EN/JA)
+            transcribed_text = await _normalize_to_allowed_langs(transcribed_text)
             if combined_message:
                 combined_message = f"{combined_message}\n\n[Audio: {transcribed_text}]"
             else:
@@ -315,9 +394,12 @@ async def assist(
         if not combined_message:
             raise HTTPException(status_code=400, detail="Provide either 'message' or 'audio_file'")
 
+        # Weather context for text or transcribed audio (EN/JA)
+        weather_context = await build_weather_context(combined_message)
         result = await llm_service.chat_completion(
             user_message=combined_message,
             conversation_history=history,
+            weather_context=weather_context,
             system_prompt_override=system_prompt
         )
 

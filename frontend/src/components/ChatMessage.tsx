@@ -2,7 +2,6 @@ import { Bot, User, Volume2, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 import { textToSpeech } from "@/lib/api";
-import { useToast } from "@/hooks/use-toast";
 
 interface ChatMessageProps {
   role: "user" | "assistant";
@@ -12,7 +11,6 @@ interface ChatMessageProps {
 const ChatMessage = ({ role, content }: ChatMessageProps) => {
   const isBot = role === "assistant";
   const [speaking, setSpeaking] = useState(false);
-  const { toast } = useToast();
 
   const handleSpeak = async () => {
     if (!content || speaking) return;
@@ -30,13 +28,8 @@ const ChatMessage = ({ role, content }: ChatMessageProps) => {
         setSpeaking(false);
       };
       await audio.play();
-    } catch (e: any) {
-      console.error("TTS error", e);
-      toast({
-        title: "Text-to-Speech failed",
-        description: e?.message || "Unable to synthesize speech.",
-        variant: "destructive",
-      });
+    } catch (_e: any) {
+      // Fail silently: no popups or UI prompts
       setSpeaking(false);
     }
   };

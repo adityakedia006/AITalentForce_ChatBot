@@ -1,4 +1,5 @@
 import httpx
+import difflib
 from typing import Dict, Tuple
 
 
@@ -38,6 +39,21 @@ class WeatherService:
             96: "Thunderstorm with slight hail",
             99: "Thunderstorm with heavy hail"
         }
+
+        # Common city name corrections for frequent typos and variants
+        self._common_corrections = {
+            "tokoyo": "Tokyo",
+            "kyouto": "Kyoto",
+            "osaka-shi": "Osaka",
+            "newyork": "New York",
+        }
+
+        # Small candidate list for fuzzy matching as a last resort
+        self._fuzzy_candidates = [
+            "Tokyo", "Osaka", "Kyoto", "Sapporo", "Nagoya", "Fukuoka", "Yokohama",
+            "Paris", "London", "New York", "Delhi", "Mumbai",
+            "東京", "大阪", "京都", "札幌", "名古屋", "福岡", "横浜"
+        ]
     
     async def get_coordinates(self, location: str) -> Tuple[float, float, str]:
         """
@@ -53,13 +69,35 @@ class WeatherService:
             Exception: If location not found or API fails
         """
         try:
+            # Detect language for better geocoding results (Japanese vs English)
+            # Japanese ranges: Hiragana U+3040–U+309F, Katakana U+30A0–U+30FF, Kanji U+4E00–U+9FFF
+            is_japanese = any(
+                ('\u3040' <= ch <= '\u309F') or ('\u30A0' <= ch <= '\u30FF') or ('\u4E00' <= ch <= '\u9FFF')
+                for ch in location
+            )
+            lang = "ja" if is_japanese else "en"
+
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     self.geocoding_url,
-                    params={"name": location, "count": 1, "language": "en", "format": "json"}
+                    params={"name": location, "count": 1, "language": lang, "format": "json"}
                 )
                 response.raise_for_status()
                 data = response.json()
+                
+                # If not found, try simple corrections then fuzzy candidates
+                if not data.get("results"):
+                    corrected = self._common_corrections.get(location.strip().lower())
+                    if not corrected:
+                        best = difflib.get_close_matches(location, self._fuzzy_candidates, n=1, cutoff=0.75)
+                        corrected = best[0] if best else None
+                    if corrected:
+                        response = await client.get(
+                            self.geocoding_url,
+                            params={"name": corrected, "count": 1, "language": lang, "format": "json"}
+                        )
+                        response.raise_for_status()
+                        data = response.json()
                 
                 if not data.get("results"):
                     raise ValueError(f"Location '{location}' not found")
