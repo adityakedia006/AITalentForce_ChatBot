@@ -7,7 +7,7 @@ import RecordingModal from "@/components/RecordingModal";
 import ThemeToggle from "@/components/ThemeToggle";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { sendChatMessage, assist, ChatMessage as ApiChatMessage, translateText } from "@/lib/api";
+import { sendChatMessage, assist, ChatMessage as ApiChatMessage, translateText, getWeather, WeatherResponse } from "@/lib/api";
 import { t } from "@/lib/i18n";
 
 interface Message {
@@ -39,14 +39,47 @@ const Index = () => {
     scrollToBottom();
   }, [messages, isTyping]);
 
+  // naive weather intent + location detector
+  const maybeExtractWeatherLocation = (text: string): string | null => {
+    const lowered = text.toLowerCase();
+    const hasWeather = /(weather|temperature|forecast|climate|rain|sunny|cloudy)/i.test(text);
+    if (!hasWeather) return null;
+    // look for "in <one|two words>" or "at/for <one|two words>"
+    const m = lowered.match(/\b(?:in|at|for)\s+([\p{L}.'-]+(?:\s+[\p{L}.'-]+)?)\b/u);
+    if (m && m[1]) {
+      return m[1].replace(/[?.!,;]+$/g, "").trim();
+    }
+    return null;
+  };
+
+  const formatWeatherForLLM = (w: WeatherResponse) =>
+    `Location: ${w.location}, Temperature: ${w.temperature}°C, ` +
+    `Condition: ${(w as any).weather_description || (w as any).description || "Unknown"}, ` +
+    `Wind Speed: ${w.wind_speed ?? "NA"} km/h, Humidity: ${w.humidity ?? "NA"}%`;
+
   const handleSendMessage = async (content: string) => {
     const userMessage: Message = { role: "user", content };
     setMessages(prev => [...prev, userMessage]);
     setIsTyping(true);
 
     try {
+      let weatherContext: string | undefined;
+      const loc = maybeExtractWeatherLocation(content);
+      if (loc) {
+        try {
+          const w = await getWeather(loc);
+          weatherContext = formatWeatherForLLM(w);
+        } catch {
+          // ignore if weather fetch fails; fall back to normal chat
+        }
+      }
+
+      const augmented = weatherContext
+        ? `${content}\n\n[Weather Information: ${weatherContext}]`
+        : content;
+
       const data = await sendChatMessage(
-        content,
+        augmented,
         messages.map(m => ({ role: m.role, content: m.content }))
       );
       
