@@ -40,7 +40,9 @@ class LLMService:
                 conversation_history = []
             
             # Build messages array
-            active_system_prompt = system_prompt_override or self.system_prompt
+            active_system_prompt = (system_prompt_override or self.system_prompt).strip()
+            if "always respond in english" not in active_system_prompt.lower():
+                active_system_prompt += "\n\nIMPORTANT: Always respond in English."
             messages = [{"role": "system", "content": active_system_prompt}]
             
             # Add conversation history
@@ -91,6 +93,35 @@ class LLMService:
             
         except Exception as e:
             raise Exception(f"Chat completion failed: {str(e)}")
+
+    async def translate_text(self, text: str, target_lang: str) -> str:
+        """Translate text to target language ('en' or 'ja') using Groq.
+        Returns only the translated text.
+        """
+        try:
+            if target_lang not in ("en", "ja"):
+                raise ValueError("target_lang must be 'en' or 'ja'")
+
+            system = (
+                "You are a precise translator. Translate the user's text to "
+                + ("English" if target_lang == "en" else "Japanese")
+                + ". Preserve meaning and tone. Return only the translated text without explanations."
+            )
+
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": text},
+                ],
+                temperature=0.2,
+                max_tokens=1024,
+                top_p=1,
+                stream=False,
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            raise Exception(f"Translation failed: {str(e)}")
     
     def get_available_models(self) -> List[str]:
         """

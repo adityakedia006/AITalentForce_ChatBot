@@ -68,3 +68,14 @@ class HealthResponse(BaseModel):
     """Response model for health check endpoint."""
     status: str = Field(..., description="Service status")
     message: str = Field(..., description="Status message")
+
+
+class TranslateRequest(BaseModel):
+    """Request model for translate endpoint."""
+    text: str = Field(..., description="Text to translate")
+    target_lang: str = Field(..., description="Target language code: 'en' or 'ja'")
+
+
+class TranslateResponse(BaseModel):
+    """Response model for translate endpoint."""
+    translated_text: str = Field(..., description="Translated text output")

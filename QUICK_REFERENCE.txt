@@ -1,0 +1,113 @@
+╔═══════════════════════════════════════════════════════════════╗
+║          AI VOICE CHATBOT - QUICK REFERENCE CARD              ║
+╚═══════════════════════════════════════════════════════════════╝
+
+📋 QUICK START
+══════════════
+1. .\start-dev.ps1          # Start both servers
+2. Open http://localhost:5173
+3. Start chatting!
+
+⚙️ CONFIGURATION
+════════════════
+Backend .env (root)          Frontend .env (frontend/)
+├─ GROQ_API_KEY             ├─ VITE_API_BASE_URL=
+├─ ELEVENLABS_API_KEY       │  http://localhost:8000
+└─ LLM_MODEL                └─ (Auto-created)
+
+🌐 URLS
+═══════
+Frontend:   http://localhost:5173
+Backend:    http://localhost:8000
+API Docs:   http://localhost:8000/docs
+Health:     http://localhost:8000/health
+
+🔧 MANUAL START
+════════════════
+Terminal 1 (Backend):       Terminal 2 (Frontend):
+$ .\venv\Scripts\Activate   $ cd frontend
+$ python main.py            $ npm run dev
+
+📡 API ENDPOINTS
+════════════════
+POST /api/chat              # Text chat
+POST /api/assist            # Text or audio
+POST /api/voice-chat        # Voice flow
+POST /api/speech-to-text    # Transcribe
+GET  /api/weather           # Weather data
+GET  /health                # Health check
+
+✨ FEATURES
+═══════════
+✓ Text chat with AI
+✓ Voice recording
+✓ Speech transcription
+✓ Weather queries
+✓ Dark/light theme
+✓ Export history
+✓ Conversation context
+
+🐛 TROUBLESHOOTING
+══════════════════
+Backend won't start:
+→ Check .env has API keys
+→ Activate venv: .\venv\Scripts\Activate.ps1
+→ Port in use: netstat -ano | findstr :8000
+
+Frontend won't connect:
+→ Backend running on :8000?
+→ Check frontend/.env exists
+→ CORS error? Check backend logs
+
+Voice not working:
+→ Grant mic permissions
+→ Use Chrome/Edge
+→ HTTPS needed in production
+
+📁 KEY FILES
+════════════
+Backend:
+├─ main.py                  # FastAPI app
+├─ config.py                # Settings
+├─ .env                     # API keys ⚠️
+└─ services/                # LLM, Speech, Weather
+
+Frontend:
+├─ src/lib/api.ts          # API client
+├─ src/pages/Index.tsx     # Main page
+└─ src/components/         # UI components
+
+🔑 GET API KEYS
+═══════════════
+Groq:        https://console.groq.com
+ElevenLabs:  https://elevenlabs.io
+
+📚 DOCUMENTATION
+════════════════
+README_FULLSTACK.md         # Complete guide
+DEVELOPMENT.md              # Dev scripts
+INTEGRATION_COMPLETE.md     # Setup details
+frontend/README.md          # Frontend docs
+
+💡 TIPS
+═══════
+• Enter = Send message
+• Shift+Enter = New line
+• Mic button = Voice record
+• Sun/Moon = Toggle theme
+• Download = Export history
+• Check terminal logs for errors
+
+🚀 PRODUCTION BUILD
+═══════════════════
+Backend:
+$ uvicorn main:app --host 0.0.0.0 --port 8000 --workers 4
+
+Frontend:
+$ cd frontend
+$ npm run build
+$ # Deploy dist/ folder
+
+═══════════════════════════════════════════════════════════════
+Need help? Check the docs or open browser DevTools console!
+═══════════════════════════════════════════════════════════════

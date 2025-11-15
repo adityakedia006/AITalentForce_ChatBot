@@ -9,7 +9,7 @@ from config import get_settings
 from models import (
     ChatRequest, ChatResponse, SpeechToTextResponse,
     VoiceChatResponse, WeatherResponse, HealthResponse,
-    ChatMessage, AssistResponse
+    ChatMessage, AssistResponse, TranslateRequest, TranslateResponse
 )
 from services import SpeechService, LLMService, WeatherService
 
@@ -81,13 +81,18 @@ async def speech_to_text(audio_file: UploadFile = File(...)):
     """
     try:
         # Read audio file
+        print(f"/api/speech-to-text: received file name={audio_file.filename}, content_type={audio_file.content_type}")
         audio_data = await audio_file.read()
         
         if not audio_data:
             raise HTTPException(status_code=400, detail="Empty audio file")
         
-        # Transcribe audio
-        transcribed_text = await speech_service.transcribe_audio(audio_data)
+        # Transcribe audio (preserve original content type and filename)
+        transcribed_text = await speech_service.transcribe_audio(
+            audio_data,
+            mime_type=getattr(audio_file, "content_type", None),
+            filename=getattr(audio_file, "filename", None)
+        )
         
         return {"text": transcribed_text}
         
@@ -194,12 +199,17 @@ async def voice_chat(
                 pass  # Use empty history if parsing fails
         
         # Step 1: Transcribe audio
+        print(f"/api/voice-chat: received file name={audio_file.filename}, content_type={audio_file.content_type}")
         audio_data = await audio_file.read()
         
         if not audio_data:
             raise HTTPException(status_code=400, detail="Empty audio file")
         
-        transcribed_text = await speech_service.transcribe_audio(audio_data)
+        transcribed_text = await speech_service.transcribe_audio(
+            audio_data,
+            mime_type=getattr(audio_file, "content_type", None),
+            filename=getattr(audio_file, "filename", None)
+        )
         
         # Step 2: Get chat response
         result = await llm_service.chat_completion(
@@ -241,10 +251,15 @@ async def assist(
         combined_message = message or ""
 
         if audio_file:
+            print(f"/api/assist: received file name={audio_file.filename}, content_type={audio_file.content_type}")
             audio_data = await audio_file.read()
             if not audio_data:
                 raise HTTPException(status_code=400, detail="Empty audio file")
-            transcribed_text = await speech_service.transcribe_audio(audio_data)
+            transcribed_text = await speech_service.transcribe_audio(
+                audio_data,
+                mime_type=getattr(audio_file, "content_type", None),
+                filename=getattr(audio_file, "filename", None)
+            )
             if combined_message:
                 combined_message = f"{combined_message}\n\n[Audio: {transcribed_text}]"
             else:
@@ -296,9 +311,20 @@ async def get_info():
             "/api/chat": "Chat with AI assistant",
             "/api/weather": "Get weather information",
             "/api/voice-chat": "Complete voice chat flow",
-            "/api/assist": "Unified text or audio input pipeline"
+            "/api/assist": "Unified text or audio input pipeline",
+            "/api/translate": "Translate arbitrary text between English and Japanese"
         }
     }
+
+
+@app.post("/api/translate", response_model=TranslateResponse)
+async def translate(request: TranslateRequest):
+    """Translate text between English and Japanese using LLMService."""
+    try:
+        translated = await llm_service.translate_text(request.text, request.target_lang)
+        return {"translated_text": translated}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Translation failed: {str(e)}")
 
 
 if __name__ == "__main__":

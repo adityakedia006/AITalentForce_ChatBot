@@ -12,7 +12,7 @@ class SpeechService:
         self.model = "scribe_v1"  # ElevenLabs Scribe model
         self.base_url = "https://api.elevenlabs.io/v1"
     
-    async def transcribe_audio(self, audio_data: bytes) -> str:
+    async def transcribe_audio(self, audio_data: bytes, mime_type: str | None = None, filename: str | None = None) -> str:
         """
         Transcribe audio to text using ElevenLabs Scribe API.
         
@@ -36,8 +36,10 @@ class SpeechService:
             
             # Prepare the file for upload
             # ElevenLabs expects the multipart field name to be 'file'
+            safe_filename = filename or "recording.webm"
+            safe_mime = mime_type or "audio/webm"
             files = {
-                "file": ("audio.wav", audio_data, "audio/wav")
+                "file": (safe_filename, audio_data, safe_mime)
             }
             
             # Optional: specify model
@@ -45,7 +47,7 @@ class SpeechService:
                 "model_id": self.model
             }
             
-            async with httpx.AsyncClient(timeout=30.0) as client:
+            async with httpx.AsyncClient(timeout=120.0) as client:
                 response = await client.post(url, headers=headers, files=files, data=data)
 
                 if response.status_code != 200:
