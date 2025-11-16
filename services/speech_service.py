@@ -2,11 +2,11 @@ import io
 import httpx
 from config import get_settings
 from typing import Tuple, Optional
-
+import os
+import mimetypes
 
 class SpeechService:
-    
-    def __init__(self):
+    def __init__(self, api_key: Optional[str] = None):
         settings = get_settings()
         self.api_key = settings.ELEVENLABS_API_KEY
         self.model = "scribe_v1"
@@ -14,9 +14,12 @@ class SpeechService:
         self.tts_model: str = getattr(settings, "ELEVENLABS_TTS_MODEL", "eleven_multilingual_v2")
         self.voice_id: str = getattr(settings, "ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
         self.tts_output_mime: str = getattr(settings, "ELEVENLABS_TTS_OUTPUT_MIME", "audio/mpeg")
+        # Deepgram config
+        self.deepgram_api_key: Optional[str] = api_key or getattr(settings, "DEEPGRAM_API_KEY", None) or os.getenv("DEEPGRAM_API_KEY")
     
     async def transcribe_audio(self, audio_data: bytes, mime_type: str | None = None, filename: str | None = None) -> str:
         try:
+            print("ElevenLabs API Called")
             url = f"{self.base_url}/speech-to-text"
             
             headers = {
@@ -62,15 +65,77 @@ class SpeechService:
             raise Exception(f"Speech-to-text transcription failed: HTTP error - {str(e)}{detail}")
         except Exception as e:
             raise Exception(f"Speech-to-text transcription failed: {str(e)}")
-    
-    def get_supported_languages(self) -> list:
-        return [
-            "en", "es", "fr", "de", "it", "pt", "pl", "nl",
-            "hi", "ja", "zh", "ko", "ar", "ru", "tr", "sv",
-            "id", "fil", "uk", "cs", "el", "fi", "hr", "ms",
-            "ro", "sk", "bg", "bn", "ta", "te"
-        ]
+        
+    async def transcribe_audio_deepgram(self, audio_bytes: bytes, *, audio_format: Optional[str] = None, mime_type: Optional[str] = None) -> str:
+        """
+        Transcribe audio using Deepgram REST API.
+        Mirrors the user's provided logic but uses httpx asynchronously.
+        """
+        if not self.deepgram_api_key:
+            raise Exception("Deepgram API key not configured. Set DEEPGRAM_API_KEY.")
 
+        url = "https://api.deepgram.com/v1/listen"
+
+        # Map common formats to content-types
+        content_type_map = {
+            "mp3": "audio/mpeg",
+            "wav": "audio/wav",
+            "flac": "audio/flac",
+            "m4a": "audio/mp4",
+            "ogg": "audio/ogg",
+            "opus": "audio/opus",
+            "webm": "audio/webm",
+        }
+
+        content_type = None
+        if mime_type and isinstance(mime_type, str):
+            content_type = mime_type
+        elif audio_format:
+            content_type = content_type_map.get(audio_format.lower())
+        if not content_type:
+            content_type = "audio/wav"
+
+        headers = {
+            "Authorization": f"Token {self.deepgram_api_key}",
+            "Content-Type": content_type,
+        }
+
+        params = {
+            "model": "nova-3",
+            "detect_language": "true",
+            "smart_format": "true",
+            "punctuate": "true",
+        }
+
+        async with httpx.AsyncClient(timeout=120.0) as client:
+            resp = await client.post(url, headers=headers, params=params, content=audio_bytes)
+            if resp.status_code != 200:
+                raise Exception(f"Deepgram API Error {resp.status_code}: {resp.text}")
+            data = resp.json()
+            transcript = (
+                data.get("results", {})
+                .get("channels", [{}])[0]
+                .get("alternatives", [{}])[0]
+                .get("transcript", "")
+            )
+            if not transcript:
+                raise Exception(f"No transcript found in Deepgram response: {data}")
+            return transcript
+
+    async def transcribe_audio2(self, audio_data: bytes, mime_type: str | None = None, filename: str | None = None) -> str:
+        """Wrapper that uses Deepgram for STT as requested."""
+        # Try to infer format from filename or mime
+        fmt: Optional[str] = None
+        if mime_type and "/" in mime_type:
+            fmt = mime_type.split("/")[-1]
+        if not fmt and filename:
+            guess = (filename.rsplit(".", 1)[-1] if "." in filename else None)
+            if guess:
+                fmt = guess.lower()
+        return await self.transcribe_audio_deepgram(audio_data, audio_format=fmt, mime_type=mime_type)
+
+    
+    
     async def synthesize_speech(
         self,
         text: str,

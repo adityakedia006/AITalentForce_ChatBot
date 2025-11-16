@@ -6,6 +6,7 @@ import io
 import uvicorn
 import json
 from typing import Optional
+import traceback
 
 from config import get_settings
 from models import (
@@ -24,6 +25,7 @@ async def lifespan(app: FastAPI):
     print(f"🎤 Speech Model: {settings.ELEVENLABS_MODEL}")
     print(f"🔊 TTS Model (ElevenLabs): {settings.ELEVENLABS_TTS_MODEL}")
     print(f"🔊 TTS Voice (ElevenLabs): {settings.ELEVENLABS_VOICE_ID}")
+    print(f"{settings.DEEPGRAM_API_KEY}")
     yield
     print("👋 Shutting down...")
 
@@ -47,7 +49,7 @@ app.add_middleware(
 )
 
 # Initialize services
-speech_service = SpeechService()
+speech_service = SpeechService(api_key=settings.DEEPGRAM_API_KEY)
 weather_service = WeatherService()
 llm_service = LLMService(weather_service=weather_service)
 
@@ -80,7 +82,7 @@ async def speech_to_text(audio_file: UploadFile = File(...)):
         if not audio_data:
             raise HTTPException(status_code=400, detail="Empty audio file")
         
-        transcribed_text = await speech_service.transcribe_audio(
+        transcribed_text = await speech_service.transcribe_audio2(
             audio_data,
             mime_type=getattr(audio_file, "content_type", None),
             filename=getattr(audio_file, "filename", None)
@@ -89,6 +91,7 @@ async def speech_to_text(audio_file: UploadFile = File(...)):
         return {"text": transcribed_text}
         
     except Exception as e:
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
 
 
@@ -145,6 +148,7 @@ async def text_to_speech(request: Request, text: str = Form(None)):
     except HTTPException:
         raise
     except Exception as e:
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Text-to-speech failed: {str(e)}")
 
 
@@ -188,6 +192,7 @@ async def voice_chat(
         }
         
     except Exception as e:
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Voice chat failed: {str(e)}")
 
 
@@ -198,6 +203,7 @@ async def assist(
     conversation_history: Optional[str] = Form(None),
     system_prompt: Optional[str] = Form(None)
 ):
+    
     try:
         history = []
         if conversation_history:
@@ -205,7 +211,8 @@ async def assist(
                 history_data = json.loads(conversation_history)
                 history = [ChatMessage(**msg) for msg in history_data]
             except:
-                pass
+                print("Error detcted")
+                
 
         transcribed_text = None
         combined_message = message or ""
@@ -215,10 +222,9 @@ async def assist(
             audio_data = await audio_file.read()
             if not audio_data:
                 raise HTTPException(status_code=400, detail="Empty audio file")
-            transcribed_text = await speech_service.transcribe_audio(
+            transcribed_text = await speech_service.transcribe_audio_deepgram(
                 audio_data,
                 mime_type=getattr(audio_file, "content_type", None),
-                filename=getattr(audio_file, "filename", None)
             )
             if combined_message:
                 combined_message = f"{combined_message}\n\n[Audio: {transcribed_text}]"
@@ -241,6 +247,7 @@ async def assist(
             "conversation_history": result["conversation_history"],
         }
     except Exception as e:
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Assist pipeline failed: {str(e)}")
 
 

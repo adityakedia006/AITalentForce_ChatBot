@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
 from functools import lru_cache
+from typing import Optional
 
 
 class Settings(BaseSettings):
@@ -11,7 +12,8 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
     DEBUG: bool = True
-    
+    # Deepgram API key (optional) - include if using Deepgram for STT
+    DEEPGRAM_API_KEY: Optional[str] = None
     LLM_MODEL: str = "llama-3.3-70b-versatile"
     LLM_SYSTEM_PROMPT: str = (
         "You are a friendly Fashion Outfit Advisor AI that provides personalized clothing recommendations based on real-time weather data. "
@@ -54,7 +56,7 @@ class Settings(BaseSettings):
     )
     
     LLM_FORCE_ENGLISH: bool = False
-    ELEVENLABS_MODEL: str = "scribe_v1"
+    ELEVENLABS_MODEL: str = "scribe_v2_realtime"
 
     ELEVENLABS_TTS_MODEL: str = "eleven_multilingual_v2"
     ELEVENLABS_VOICE_ID: str = "21m00Tcm4TlvDq8ikWAM"
