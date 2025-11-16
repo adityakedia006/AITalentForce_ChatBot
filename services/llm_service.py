@@ -13,6 +13,15 @@ class LLMService:
         self.model = self.settings.LLM_MODEL
         self.system_prompt = self.settings.LLM_SYSTEM_PROMPT
         self.weather_service = weather_service
+        
+        # Fallback models in order of preference
+        self.fallback_models = [
+            "llama-3.1-8b-instant",
+            "llama-3.1-70b-versatile", 
+            "llama-3.3-70b-versatile",
+            "mixtral-8x7b-32768",
+            "gemma2-9b-it"
+        ]
     
     def _get_weather_tool_definition(self) -> Dict:
         return {
@@ -32,6 +41,47 @@ class LLMService:
                 }
             }
         }
+
+    async def _try_chat_with_fallback(self, messages, tools, max_retries=3):
+        """Try chat completion with fallback models"""
+        models_to_try = [self.model] + [m for m in self.fallback_models if m != self.model]
+        
+        for attempt, model in enumerate(models_to_try[:max_retries]):
+            try:
+                print(f"🤖 Trying model: {model} (attempt {attempt + 1})")
+                
+                response = self.client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    temperature=0.7,
+                    max_tokens=1024,
+                    top_p=1,
+                    stream=False,
+                    tools=tools,
+                    tool_choice="auto" if tools else None
+                )
+                
+                print(f"✅ Success with model: {model}")
+                return response, model
+                
+            except Exception as e:
+                error_msg = str(e).lower()
+                print(f"❌ Model {model} failed: {e}")
+                
+                # Check if it's a rate limit error
+                if "rate" in error_msg or "limit" in error_msg or "429" in error_msg:
+                    print(f"⏳ Rate limit hit for {model}, trying next model...")
+                    continue
+                elif "not found" in error_msg or "unavailable" in error_msg:
+                    print(f"🚫 Model {model} not available, trying next model...")
+                    continue
+                else:
+                    # For other errors, still try next model
+                    print(f"🔄 Error with {model}, trying next model...")
+                    continue
+        
+        # If all models fail, raise the last error
+        raise Exception(f"All models failed. Available models: {models_to_try[:max_retries]}")
 
     async def chat_completion(
         self,
@@ -82,16 +132,8 @@ class LLMService:
             if self.weather_service:
                 tools = [self._get_weather_tool_definition()]
             
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=messages,
-                temperature=0.7,
-                max_tokens=1024,
-                top_p=1,
-                stream=False,
-                tools=tools,
-                tool_choice="auto" if tools else None
-            )
+            # Try with fallback system
+            response, used_model = await self._try_chat_with_fallback(messages, tools)
             
             response_message = response.choices[0].message
             tool_calls = response_message.tool_calls
@@ -118,15 +160,8 @@ class LLMService:
                             "content": tool_response
                         })
                 
-                second_response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=messages,
-                    temperature=0.7,
-                    max_tokens=1024,
-                    top_p=1,
-                    stream=False
-                )
-                
+                # Use the same model that worked for the second call
+                second_response, _ = await self._try_chat_with_fallback(messages, None)
                 assistant_message = second_response.choices[0].message.content
             else:
                 assistant_message = response_message.content
@@ -158,17 +193,13 @@ class LLMService:
                 + ". Preserve meaning and tone. Return only the translated text without explanations."
             )
 
-            response = self.client.chat.completions.create(
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": text},
-                ],
-                temperature=0.2,
-                max_tokens=1024,
-                top_p=1,
-                stream=False,
-            )
+            messages = [
+                {"role": "system", "content": system},
+                {"role": "user", "content": text},
+            ]
+
+            # Use fallback system for translation too
+            response, _ = await self._try_chat_with_fallback(messages, None)
             return response.choices[0].message.content.strip()
         except Exception as e:
             raise Exception(f"Translation failed: {str(e)}")
