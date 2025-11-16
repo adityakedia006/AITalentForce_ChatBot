@@ -5,33 +5,18 @@ from typing import Tuple, Optional
 
 
 class SpeechService:
-    """Service for speech-to-text conversion using ElevenLabs Scribe API."""
     
     def __init__(self):
         settings = get_settings()
         self.api_key = settings.ELEVENLABS_API_KEY
-        self.model = "scribe_v1"  # ElevenLabs Scribe model (STT)
+        self.model = "scribe_v1"
         self.base_url = "https://api.elevenlabs.io/v1"
-        # ElevenLabs TTS
         self.tts_model: str = getattr(settings, "ELEVENLABS_TTS_MODEL", "eleven_multilingual_v2")
         self.voice_id: str = getattr(settings, "ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
         self.tts_output_mime: str = getattr(settings, "ELEVENLABS_TTS_OUTPUT_MIME", "audio/mpeg")
     
     async def transcribe_audio(self, audio_data: bytes, mime_type: str | None = None, filename: str | None = None) -> str:
-        """
-        Transcribe audio to text using ElevenLabs Scribe API.
-        
-        Args:
-            audio_data: Audio file bytes
-            
-        Returns:
-            Transcribed text
-            
-        Raises:
-            Exception: If transcription fails
-        """
         try:
-            # Use ElevenLabs REST API directly for speech-to-text
             url = f"{self.base_url}/speech-to-text"
             
             headers = {
@@ -39,15 +24,12 @@ class SpeechService:
                 "accept": "application/json"
             }
             
-            # Prepare the file for upload
-            # ElevenLabs expects the multipart field name to be 'file'
             safe_filename = filename or "recording.webm"
             safe_mime = mime_type or "audio/webm"
             files = {
                 "file": (safe_filename, audio_data, safe_mime)
             }
             
-            # Optional: specify model
             data = {
                 "model_id": self.model
             }
@@ -56,7 +38,6 @@ class SpeechService:
                 response = await client.post(url, headers=headers, files=files, data=data)
 
                 if response.status_code != 200:
-                    # Try to surface API-provided error details
                     try:
                         err_payload = response.json()
                     except Exception:
@@ -72,7 +53,6 @@ class SpeechService:
                 return transcribed_text
             
         except httpx.HTTPError as e:
-            # Provide more detail if response available
             detail = ""
             if hasattr(e, "response") and e.response is not None:
                 try:
@@ -84,13 +64,6 @@ class SpeechService:
             raise Exception(f"Speech-to-text transcription failed: {str(e)}")
     
     def get_supported_languages(self) -> list:
-        """
-        Get list of supported languages.
-        
-        Returns:
-            List of supported language codes
-        """
-        # ElevenLabs multilingual model supports many languages
         return [
             "en", "es", "fr", "de", "it", "pt", "pl", "nl",
             "hi", "ja", "zh", "ko", "ar", "ru", "tr", "sv",
@@ -105,17 +78,6 @@ class SpeechService:
         model: Optional[str] = None,
         voice_id: Optional[str] = None,
     ) -> Tuple[bytes, str]:
-        """
-        Convert text to speech using ElevenLabs TTS REST API.
-
-        Args:
-            text: Text to synthesize
-            model: ElevenLabs TTS model (e.g., 'eleven_multilingual_v2')
-            voice_id: ElevenLabs voice ID to use
-
-        Returns:
-            Tuple of (audio bytes, content_type)
-        """
         if not text or not text.strip():
             raise ValueError("Text is required for TTS")
 

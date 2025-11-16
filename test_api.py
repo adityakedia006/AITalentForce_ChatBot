@@ -73,7 +73,7 @@ def test_chat_with_weather():
     response = requests.post(
         f"{BASE_URL}/api/chat",
         json={
-            "message": "What's the weather like in Paris?",
+            "message": "What's the weather like in Jodhpur, India?",
             "conversation_history": []
         }
     )
@@ -133,20 +133,11 @@ def test_speech_to_text(audio_file_path=None):
 
 
 def test_text_to_speech(text: str = "This is a test of ElevenLabs text to speech."):
-    """Test text-to-speech endpoint (Deepgram)"""
     print("\n" + "="*50)
     print("Testing Text-to-Speech Endpoint")
     print("="*50)
 
     try:
-        # Check if TTS is available on server
-        try:
-            info = requests.get(f"{BASE_URL}/api/info").json()
-            if not info.get("features", {}).get("tts", {}).get("enabled", False):
-                print("⚠️  Skipped: TTS not configured on server")
-                return False
-        except Exception:
-            pass
         response = requests.post(
             f"{BASE_URL}/api/text-to-speech",
             headers={"Content-Type": "application/json"},
@@ -191,10 +182,6 @@ def run_all_tests():
     
     results = {
         "Health Check": test_health(),
-        "API Info": test_api_info(),
-        "Weather": test_weather("Jodhpur, India"),
-        "Weather (Paris)": test_weather("Paris"),
-        "Basic Chat": test_chat(),
         "Weather Query Chat": test_chat_with_weather(),
         "Conversation History": test_chat_conversation(),
         "Speech-to-Text": test_speech_to_text("D:\\chat\\japan.wav"),

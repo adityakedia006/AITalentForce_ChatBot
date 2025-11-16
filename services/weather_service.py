@@ -4,7 +4,6 @@ from typing import Dict, Tuple
 
 
 class WeatherService:
-    """Service for fetching weather data using Open-Meteo API."""
     
     def __init__(self):
         self.geocoding_url = "https://geocoding-api.open-meteo.com/v1/search"
@@ -40,7 +39,6 @@ class WeatherService:
             99: "Thunderstorm with heavy hail"
         }
 
-        # Common city name corrections for frequent typos and variants
         self._common_corrections = {
             "tokoyo": "Tokyo",
             "kyouto": "Kyoto",
@@ -48,7 +46,6 @@ class WeatherService:
             "newyork": "New York",
         }
 
-        # Small candidate list for fuzzy matching as a last resort
         self._fuzzy_candidates = [
             "Tokyo", "Osaka", "Kyoto", "Sapporo", "Nagoya", "Fukuoka", "Yokohama",
             "Paris", "London", "New York", "Delhi", "Mumbai",
@@ -56,21 +53,7 @@ class WeatherService:
         ]
     
     async def get_coordinates(self, location: str) -> Tuple[float, float, str]:
-        """
-        Get coordinates for a location using geocoding API.
-        
-        Args:
-            location: Location name (city, country)
-            
-        Returns:
-            Tuple of (latitude, longitude, location_name)
-            
-        Raises:
-            Exception: If location not found or API fails
-        """
         try:
-            # Detect language for better geocoding results (Japanese vs English)
-            # Japanese ranges: Hiragana U+3040–U+309F, Katakana U+30A0–U+30FF, Kanji U+4E00–U+9FFF
             is_japanese = any(
                 ('\u3040' <= ch <= '\u309F') or ('\u30A0' <= ch <= '\u30FF') or ('\u4E00' <= ch <= '\u9FFF')
                 for ch in location
@@ -85,7 +68,6 @@ class WeatherService:
                 response.raise_for_status()
                 data = response.json()
                 
-                # If not found, try simple corrections then fuzzy candidates
                 if not data.get("results"):
                     corrected = self._common_corrections.get(location.strip().lower())
                     if not corrected:
@@ -107,7 +89,6 @@ class WeatherService:
                 longitude = result["longitude"]
                 location_name = result["name"]
                 
-                # Add country if available
                 if "country" in result:
                     location_name = f"{location_name}, {result['country']}"
                 
@@ -119,23 +100,9 @@ class WeatherService:
             raise Exception(f"Failed to parse geocoding response: {str(e)}")
     
     async def get_weather(self, location: str) -> Dict[str, any]:
-        """
-        Get current weather for a location.
-        
-        Args:
-            location: Location name (city, country)
-            
-        Returns:
-            Dictionary with weather data
-            
-        Raises:
-            Exception: If weather data fetch fails
-        """
         try:
-            # Get coordinates first
             latitude, longitude, location_name = await self.get_coordinates(location)
             
-            # Fetch weather data
             async with httpx.AsyncClient() as client:
                 response = await client.get(
                     self.weather_url,
@@ -171,15 +138,6 @@ class WeatherService:
             raise Exception(f"Failed to fetch weather data: {str(e)}")
     
     def format_weather_for_llm(self, weather_data: Dict[str, any]) -> str:
-        """
-        Format weather data for LLM context.
-        
-        Args:
-            weather_data: Weather data dictionary
-            
-        Returns:
-            Formatted weather string
-        """
         return (
             f"Location: {weather_data['location']}, "
             f"Temperature: {weather_data['temperature']}°C, "

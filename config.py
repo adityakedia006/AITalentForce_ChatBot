@@ -4,17 +4,14 @@ from functools import lru_cache
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
-    
-    # API Keys
+
     GROQ_API_KEY: str
     ELEVENLABS_API_KEY: str
     
-    # Server Configuration
     HOST: str = "0.0.0.0"
     PORT: int = 8000
     DEBUG: bool = True
     
-    # LLM Configuration
     LLM_MODEL: str = "llama-3.3-70b-versatile"
     LLM_SYSTEM_PROMPT: str = (
         "You are an advanced Fashion Outfit Advisor AI designed to generate highly personalized clothing recommendations based solely on weather data. "
@@ -46,17 +43,11 @@ class Settings(BaseSettings):
         "Match the user's language - use Japanese if they speak Japanese, English if they speak English. "
         "Be conversational and natural. Do not use fragmented responses or excessive punctuation."
     )
-    # When true, assistant always responds in English.
-    # Set to False to allow responding in user's language (e.g., Japanese).
-    LLM_FORCE_ENGLISH: bool = False
-    # Alternative models: llama-3.1-70b-versatile, llama-3.1-8b-instant, mixtral-8x7b-32768
     
-    # ElevenLabs Configuration (Speech-to-Text)
+    LLM_FORCE_ENGLISH: bool = False
     ELEVENLABS_MODEL: str = "scribe_v1"
 
-    # ElevenLabs TTS Configuration
     ELEVENLABS_TTS_MODEL: str = "eleven_multilingual_v2"
-    # Default public sample voice (Rachel). Replace in .env for production.
     ELEVENLABS_VOICE_ID: str = "21m00Tcm4TlvDq8ikWAM"
     ELEVENLABS_TTS_OUTPUT_MIME: str = "audio/mpeg"
     
