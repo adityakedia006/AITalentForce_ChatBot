@@ -52,35 +52,7 @@ weather_service = WeatherService()
 llm_service = LLMService(weather_service=weather_service)
 
 
-def _detect_lang_simple(text: str) -> str:
-    if not text:
-        return "en"
 
-    has_ja = any(
-        ('\u3040' <= ch <= '\u309F')
-        or ('\u30A0' <= ch <= '\u30FF')
-        or ('\u4E00' <= ch <= '\u9FFF')
-        for ch in text
-    )
-    if has_ja:
-        return "ja"
-
-    has_en = any(('a' <= ch.lower() <= 'z') for ch in text)
-    if has_en:
-        return "en"
-
-    return "other"
-
-
-async def _normalize_to_allowed_langs(text: str) -> str:
-    lang = _detect_lang_simple(text)
-    if lang in ("en", "ja"):
-        return text
-    try:
-        translated = await llm_service.translate_text(text, "en")
-        return translated or text
-    except Exception:
-        return text
 
 
 @app.get("/", response_model=HealthResponse)
@@ -202,7 +174,6 @@ async def voice_chat(
             mime_type=getattr(audio_file, "content_type", None),
             filename=getattr(audio_file, "filename", None)
         )
-        transcribed_text = await _normalize_to_allowed_langs(transcribed_text)
         
         result = await llm_service.chat_completion(
             user_message=transcribed_text,
@@ -249,7 +220,6 @@ async def assist(
                 mime_type=getattr(audio_file, "content_type", None),
                 filename=getattr(audio_file, "filename", None)
             )
-            transcribed_text = await _normalize_to_allowed_langs(transcribed_text)
             if combined_message:
                 combined_message = f"{combined_message}\n\n[Audio: {transcribed_text}]"
             else:

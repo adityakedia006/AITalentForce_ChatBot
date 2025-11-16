@@ -38,7 +38,8 @@ class LLMService:
         user_message: str,
         conversation_history: List[ChatMessage] = None,
         weather_context: str = None,
-        system_prompt_override: str = None
+        system_prompt_override: str = None,
+        per_turn_instruction: Optional[str] = None
     ) -> Dict[str, any]:
         try:
             if conversation_history is None:
@@ -62,6 +63,9 @@ class LLMService:
                     active_system_prompt += f"\n\n{policy_hint}"
             
             messages = [{"role": "system", "content": active_system_prompt}]
+
+            if per_turn_instruction and per_turn_instruction.strip():
+                messages.append({"role": "system", "content": per_turn_instruction.strip()})
             
             for msg in conversation_history:
                 messages.append({
