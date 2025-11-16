@@ -17,7 +17,6 @@ class LLMService:
         # Fallback models in order of preference
         self.fallback_models = [
             "llama-3.1-8b-instant",
-            "llama-3.1-70b-versatile", 
             "llama-3.3-70b-versatile",
             "mixtral-8x7b-32768",
             "gemma2-9b-it"
@@ -48,36 +47,41 @@ class LLMService:
         
         for attempt, model in enumerate(models_to_try[:max_retries]):
             try:
-                print(f"🤖 Trying model: {model} (attempt {attempt + 1})")
+                print(f"Trying model: {model} (attempt {attempt + 1})")
                 
-                response = self.client.chat.completions.create(
-                    model=model,
-                    messages=messages,
-                    temperature=0.7,
-                    max_tokens=1024,
-                    top_p=1,
-                    stream=False,
-                    tools=tools,
-                    tool_choice="auto" if tools else None
-                )
+                # Fix tool_choice parameter issue
+                create_params = {
+                    "model": model,
+                    "messages": messages,
+                    "temperature": 0.7,
+                    "max_tokens": 1024,
+                    "top_p": 1,
+                    "stream": False
+                }
                 
-                print(f"✅ Success with model: {model}")
+                # Only add tools if they exist, don't use tool_choice
+                if tools:
+                    create_params["tools"] = tools
+                
+                response = self.client.chat.completions.create(**create_params)
+                
+                print(f"Success with model: {model}")
                 return response, model
                 
             except Exception as e:
                 error_msg = str(e).lower()
-                print(f"❌ Model {model} failed: {e}")
+                print(f"Model {model} failed: {e}")
                 
                 # Check if it's a rate limit error
                 if "rate" in error_msg or "limit" in error_msg or "429" in error_msg:
-                    print(f"⏳ Rate limit hit for {model}, trying next model...")
+                    print(f"Rate limit hit for {model}, trying next model...")
                     continue
                 elif "not found" in error_msg or "unavailable" in error_msg:
-                    print(f"🚫 Model {model} not available, trying next model...")
+                    print(f"Model {model} not available, trying next model...")
                     continue
                 else:
                     # For other errors, still try next model
-                    print(f"🔄 Error with {model}, trying next model...")
+                    print(f"Error with {model}, trying next model...")
                     continue
         
         # If all models fail, raise the last error
@@ -206,9 +210,8 @@ class LLMService:
     
     def get_available_models(self) -> List[str]:
         return [
-            "llama-3.3-70b-versatile",
-            "llama-3.1-70b-versatile",
             "llama-3.1-8b-instant",
+            "llama-3.3-70b-versatile",
             "mixtral-8x7b-32768",
             "gemma2-9b-it"
         ]
