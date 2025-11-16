@@ -27,11 +27,6 @@ class ChatResponse(BaseModel):
     conversation_history: List[ChatMessage] = Field(..., description="Updated conversation history")
 
 
-class SpeechToTextResponse(BaseModel):
-    """Response model for speech-to-text endpoint."""
-    text: str = Field(..., description="Transcribed text from audio")
-
-
 class VoiceChatResponse(BaseModel):
     """Response model for voice chat endpoint."""
     transcribed_text: str = Field(..., description="Transcribed user speech")

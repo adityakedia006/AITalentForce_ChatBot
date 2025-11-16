@@ -10,24 +10,18 @@ import traceback
 
 from config import get_settings
 from models import (
-    ChatRequest, ChatResponse, SpeechToTextResponse,
+    ChatRequest, ChatResponse,
     VoiceChatResponse, WeatherResponse, HealthResponse,
     ChatMessage, AssistResponse, TranslateRequest, TranslateResponse
 )
 from services import SpeechService, LLMService, WeatherService
 
 
-# Lifespan context manager for startup/shutdown events
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    print("🚀 Starting Voice-Enabled Chatbot Backend...")
-    print(f"📊 LLM Model: {settings.LLM_MODEL}")
-    print(f"🎤 Speech Model: {settings.ELEVENLABS_MODEL}")
-    print(f"🔊 TTS Model (ElevenLabs): {settings.ELEVENLABS_TTS_MODEL}")
-    print(f"🔊 TTS Voice (ElevenLabs): {settings.ELEVENLABS_VOICE_ID}")
-    print(f"{settings.DEEPGRAM_API_KEY}")
+    print("Starting Voice-Enabled Chatbot Backend...")
     yield
-    print("👋 Shutting down...")
+    print("Shutting down...")
 
 
 # Initialize FastAPI app
@@ -53,10 +47,6 @@ speech_service = SpeechService(api_key=settings.DEEPGRAM_API_KEY)
 weather_service = WeatherService()
 llm_service = LLMService(weather_service=weather_service)
 
-
-
-
-
 @app.get("/", response_model=HealthResponse)
 async def root():
     return {
@@ -64,36 +54,12 @@ async def root():
         "message": "Voice-Enabled Chatbot API is running"
     }
 
-
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     return {
         "status": "healthy",
         "message": "All systems operational"
     }
-
-
-@app.post("/api/speech-to-text", response_model=SpeechToTextResponse)
-async def speech_to_text(audio_file: UploadFile = File(...)):
-    try:
-        print(f"/api/speech-to-text: received file name={audio_file.filename}, content_type={audio_file.content_type}")
-        audio_data = await audio_file.read()
-        
-        if not audio_data:
-            raise HTTPException(status_code=400, detail="Empty audio file")
-        
-        transcribed_text = await speech_service.transcribe_audio2(
-            audio_data,
-            mime_type=getattr(audio_file, "content_type", None),
-            filename=getattr(audio_file, "filename", None)
-        )
-        
-        return {"text": transcribed_text}
-        
-    except Exception as e:
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
-
 
 @app.post("/api/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest):

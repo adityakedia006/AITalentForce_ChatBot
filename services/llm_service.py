@@ -108,7 +108,7 @@ class LLMService:
                     )
             else:
                 policy_hint = (
-                    "Use same language as the user."
+                    "Use same language as the user if not japanese or english then respond in english."
                     "If user write in Japanese, respond in Japanese. "
                     "If user write in English then respond in English. "
                     "Use proper grammar, complete sentences, and natural formatting."
@@ -210,6 +210,7 @@ class LLMService:
     
     def get_available_models(self) -> List[str]:
         return [
+            "meta-llama/llama-4-maverick-17b-128e-instruct",
             "llama-3.1-8b-instant",
             "llama-3.3-70b-versatile",
             "mixtral-8x7b-32768",

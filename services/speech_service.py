@@ -11,66 +11,12 @@ class SpeechService:
         self.api_key = settings.ELEVENLABS_API_KEY
         self.model = "scribe_v1"
         self.base_url = "https://api.elevenlabs.io/v1"
-        self.tts_model: str = getattr(settings, "ELEVENLABS_TTS_MODEL", "eleven_multilingual_v2")
         self.voice_id: str = getattr(settings, "ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
         self.tts_output_mime: str = getattr(settings, "ELEVENLABS_TTS_OUTPUT_MIME", "audio/mpeg")
         # Deepgram config
         self.deepgram_api_key: Optional[str] = api_key or getattr(settings, "DEEPGRAM_API_KEY", None) or os.getenv("DEEPGRAM_API_KEY")
-    
-    async def transcribe_audio(self, audio_data: bytes, mime_type: str | None = None, filename: str | None = None) -> str:
-        try:
-            print("ElevenLabs API Called")
-            url = f"{self.base_url}/speech-to-text"
-            
-            headers = {
-                "xi-api-key": self.api_key,
-                "accept": "application/json"
-            }
-            
-            safe_filename = filename or "recording.webm"
-            safe_mime = mime_type or "audio/webm"
-            files = {
-                "file": (safe_filename, audio_data, safe_mime)
-            }
-            
-            data = {
-                "model_id": self.model
-            }
-            
-            async with httpx.AsyncClient(timeout=120.0) as client:
-                response = await client.post(url, headers=headers, files=files, data=data)
-
-                if response.status_code != 200:
-                    try:
-                        err_payload = response.json()
-                    except Exception:
-                        err_payload = {"raw": response.text}
-                    raise Exception(f"ElevenLabs API error {response.status_code}: {err_payload}")
-
-                result = response.json()
-                transcribed_text = result.get("text") or result.get("transcription") or ""
-
-                if not transcribed_text:
-                    raise ValueError(f"No text field in response: {result}")
-
-                return transcribed_text
-            
-        except httpx.HTTPError as e:
-            detail = ""
-            if hasattr(e, "response") and e.response is not None:
-                try:
-                    detail = f" | Body: {e.response.text}"
-                except Exception:
-                    pass
-            raise Exception(f"Speech-to-text transcription failed: HTTP error - {str(e)}{detail}")
-        except Exception as e:
-            raise Exception(f"Speech-to-text transcription failed: {str(e)}")
-        
+     
     async def transcribe_audio_deepgram(self, audio_bytes: bytes, *, audio_format: Optional[str] = None, mime_type: Optional[str] = None) -> str:
-        """
-        Transcribe audio using Deepgram REST API.
-        Mirrors the user's provided logic but uses httpx asynchronously.
-        """
         if not self.deepgram_api_key:
             raise Exception("Deepgram API key not configured. Set DEEPGRAM_API_KEY.")
 
@@ -121,20 +67,6 @@ class SpeechService:
             if not transcript:
                 raise Exception(f"No transcript found in Deepgram response: {data}")
             return transcript
-
-    async def transcribe_audio2(self, audio_data: bytes, mime_type: str | None = None, filename: str | None = None) -> str:
-        """Wrapper that uses Deepgram for STT as requested."""
-        # Try to infer format from filename or mime
-        fmt: Optional[str] = None
-        if mime_type and "/" in mime_type:
-            fmt = mime_type.split("/")[-1]
-        if not fmt and filename:
-            guess = (filename.rsplit(".", 1)[-1] if "." in filename else None)
-            if guess:
-                fmt = guess.lower()
-        return await self.transcribe_audio_deepgram(audio_data, audio_format=fmt, mime_type=mime_type)
-
-    
     
     async def synthesize_speech(
         self,
