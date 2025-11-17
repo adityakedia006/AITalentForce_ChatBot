@@ -16,8 +16,9 @@ class LLMService:
         
         # Fallback models in order of preference
         self.fallback_models = [
-            "llama-3.1-8b-instant",
+            "meta-llama/llama-4-maverick-17b-128e-instruct",
             "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
             "mixtral-8x7b-32768",
             "gemma2-9b-it"
         ]
@@ -108,9 +109,9 @@ class LLMService:
                     )
             else:
                 policy_hint = (
-                    "Use same language as the user if not japanese or english then respond in english."
                     "If user write in Japanese, respond in Japanese. "
                     "If user write in English then respond in English. "
+                    "The input will be in these two languages only if not then translate to any on of Enlgish or Japanese."
                     "Use proper grammar, complete sentences, and natural formatting."
                 )
                 if "use the same language" not in active_system_prompt.lower():
@@ -211,8 +212,8 @@ class LLMService:
     def get_available_models(self) -> List[str]:
         return [
             "meta-llama/llama-4-maverick-17b-128e-instruct",
-            "llama-3.1-8b-instant",
             "llama-3.3-70b-versatile",
+            "llama-3.1-8b-instant",
             "mixtral-8x7b-32768",
             "gemma2-9b-it"
         ]
